@@ -1,0 +1,6 @@
+{
+  "name": "DhakaSlots - bKash & Nagad Slot Casino",
+  "description": "Play premier slot games like JILI, Fa Chai (FC), and JDB with seamless bKash & Nagad deposit and withdrawal, instant payouts, and mega progressive jackpots.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

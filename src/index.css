@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #090a0f;
+    color: #f1f5f9;
+  }
+
+  .font-display {
+    font-family: 'Cinzel', serif;
+  }
+
+  .font-mono-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Custom glow and gold effects */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #FFE259 0%, #FFA751 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-border-glow {
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
+}
+
+.bkash-gradient {
+  background: linear-gradient(135deg, #e2136e 0%, #a00d4d 100%);
+}
+
+.nagad-gradient {
+  background: linear-gradient(135deg, #f26522 0%, #c13e05 100%);
+}
+
+/* Slot reel animations */
+@keyframes reelBlur {
+  0% { transform: translateY(0); filter: blur(0px); }
+  50% { transform: translateY(-40%); filter: blur(4px); }
+  100% { transform: translateY(-100%); filter: blur(2px); }
+}
+
+.animate-reel-spin {
+  animation: reelBlur 0.18s infinite linear;
+}
