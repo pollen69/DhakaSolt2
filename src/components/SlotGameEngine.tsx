@@ -50,6 +50,7 @@ export const SlotGameEngine: React.FC<SlotGameEngineProps> = ({
   // Free spins mode
   const [freeSpinsRemaining, setFreeSpinsRemaining] = useState<number>(0);
   const [freeSpinsTotalWon, setFreeSpinsTotalWon] = useState<number>(0);
+  const isFreeSpin = freeSpinsRemaining > 0;
 
   // Win stats
   const [lastWin, setLastWin] = useState<number>(0);
@@ -107,11 +108,12 @@ export const SlotGameEngine: React.FC<SlotGameEngineProps> = ({
   const handleSpin = useCallback(() => {
     if (isSpinningRef.current) return;
 
-    // Check balance if not in free spin mode
+    // Check balance if not in free spin mode - reject spin on insufficient credits
     const isFreeSpin = freeSpinsRemaining > 0;
     if (!isFreeSpin && balance < bet) {
       soundManager.playClick();
-      setWinMessage('Insufficient balance! Please deposit via bKash or Nagad.');
+      setWinMessage('অপর্যাপ্ত ব্যালেন্স! স্পিন প্রত্যাখ্যাত হয়েছে। অনুগ্রহ করে bKash বা Nagad দিয়ে ডিপোজিট করুন। (Insufficient credits: Spin rejected.)');
+      setAutoSpinCount(0);
       return;
     }
 
@@ -323,13 +325,18 @@ export const SlotGameEngine: React.FC<SlotGameEngineProps> = ({
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (autoSpinCount > 0 && !isSpinning) {
+      if (balance < bet && freeSpinsRemaining <= 0) {
+        setAutoSpinCount(0);
+        setWinMessage('অপর্যাপ্ত ব্যালেন্স! অটো-স্পিন বন্ধ করা হয়েছে। (Auto-spin stopped: Insufficient balance)');
+        return;
+      }
       timer = setTimeout(() => {
         setAutoSpinCount((prev) => Math.max(0, prev - 1));
         handleSpin();
       }, isTurbo ? 600 : 1200);
     }
     return () => clearTimeout(timer);
-  }, [autoSpinCount, isSpinning, handleSpin, isTurbo]);
+  }, [autoSpinCount, isSpinning, handleSpin, isTurbo, balance, bet, freeSpinsRemaining]);
 
   // Free spins loop
   useEffect(() => {
@@ -629,17 +636,40 @@ export const SlotGameEngine: React.FC<SlotGameEngineProps> = ({
           </div>
 
           {/* Primary Spin Action Button */}
-          <button
-            onClick={handleSpin}
-            disabled={isSpinning}
-            className={`px-8 py-3 rounded-xl font-extrabold text-base tracking-wider uppercase transition-all shadow-lg ${
-              isSpinning
-                ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-amber-400 text-black shadow-amber-500/30 active:scale-95'
-            }`}
-          >
-            {isSpinning ? 'SPINNING...' : 'SPIN'}
-          </button>
+          <div className="flex items-center gap-2">
+            {(!isFreeSpin && balance < bet) && (
+              <button
+                onClick={() => {
+                  soundManager.playClick();
+                  onOpenDeposit();
+                }}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all animate-pulse"
+                title="ডিপোজিট করতে ক্লিক করুন"
+              >
+                <Coins className="w-3.5 h-3.5 fill-black" />
+                <span>ডিপোজিট করুন</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleSpin}
+              disabled={isSpinning || (!isFreeSpin && balance < bet)}
+              className={`px-8 py-3 rounded-xl font-extrabold text-base tracking-wider uppercase transition-all shadow-lg ${
+                isSpinning
+                  ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
+                  : (!isFreeSpin && balance < bet)
+                  ? 'bg-neutral-900 border border-rose-500/50 text-rose-300 cursor-not-allowed opacity-75 shadow-none'
+                  : 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-amber-400 text-black shadow-amber-500/30 active:scale-95 cursor-pointer'
+              }`}
+              title={(!isFreeSpin && balance < bet) ? 'অপর্যাপ্ত ব্যালেন্স! স্পিন করতে ডিপোজিট করুন' : 'স্পিন করুন'}
+            >
+              {isSpinning
+                ? 'SPINNING...'
+                : (!isFreeSpin && balance < bet)
+                ? 'অপর্যাপ্ত ক্রেডিট'
+                : 'SPIN'}
+            </button>
+          </div>
         </div>
       </div>
 

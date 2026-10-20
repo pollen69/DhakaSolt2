@@ -132,12 +132,12 @@ export function listenAuthState(
   callback: (user: FirebaseUser | null, uid: string) => void
 ) {
   return onAuthStateChanged(auth, async (user) => {
-    if (user) {
+    if (user && !user.isAnonymous) {
       setLocalPlayerUid(user.uid);
       callback(user, user.uid);
     } else {
-      const activeUid = getLocalPlayerUid();
-      callback(null, activeUid);
+      setLocalPlayerUid('');
+      callback(null, '');
     }
   });
 }
@@ -149,7 +149,7 @@ export async function signInWithGoogle() {
     const user = result.user;
     setLocalPlayerUid(user.uid);
 
-    // Sync initial profile if new - starts with 0 balance
+    // Sync initial profile if new - starts strictly with 0 balance
     const existing = await fetchUserDataFromFirestore(user.uid);
     if (!existing) {
       await syncUserDataToFirestore(user.uid, {
@@ -180,7 +180,7 @@ export async function registerWithEmailPassword(
   phoneNumber?: string
 ) {
   try {
-    const result = await createUserWithEmailAndPassword(auth, email, pass);
+    const result = await createUserWithEmailAndPassword(auth, email.trim(), pass);
     const user = result.user;
     if (displayName) {
       try {
@@ -191,7 +191,7 @@ export async function registerWithEmailPassword(
     }
     setLocalPlayerUid(user.uid);
 
-    // Initialize user in Firestore with 0 balance
+    // Initialize new user in Firestore strictly with 0 balance
     await syncUserDataToFirestore(user.uid, {
       balance: 0,
       vipPoints: 0,
@@ -207,22 +207,33 @@ export async function registerWithEmailPassword(
       err?.code === 'auth/operation-not-allowed' ||
       err?.code === 'auth/admin-restricted-operation';
 
+    let errorMsg = 'রেজিস্ট্রেশন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
+    if (err?.code === 'auth/email-already-in-use') {
+      errorMsg = 'এই ইমেইলটি ইতিমধ্যে ব্যবহৃত হয়েছে। অনুগ্রহ করে লগ ইন করুন। (Email already registered. Please log in.)';
+    } else if (err?.code === 'auth/weak-password') {
+      errorMsg = 'পাসওয়ার্ড অত্যন্ত দুর্বল! অন্তত ৬ অক্ষরের পাসওয়ার্ড দিন। (Password must be at least 6 characters.)';
+    } else if (err?.code === 'auth/invalid-email') {
+      errorMsg = 'অবৈধ ইমেইল ঠিকানা! সঠিক ইমেইল প্রদান করুন। (Invalid email address format.)';
+    } else if (requiresConsoleActivation) {
+      errorMsg = 'Firebase Console-এ Email/Password provider সক্রিয় নেই। Console থেকে Enable করুন অথবা Instant Casino ID ব্যবহার করুন।';
+    } else if (err?.message) {
+      errorMsg = err.message;
+    }
+
     return {
       success: false,
       code: err?.code || 'auth/unknown',
-      message: requiresConsoleActivation
-        ? 'Email/Password provider is not yet enabled in the Firebase Console. You can enable it with 1 click in the console or use instant Casino Player ID.'
-        : err?.message || 'Registration failed',
+      message: errorMsg,
       requiresConsoleActivation,
       consoleUrl: FIREBASE_AUTH_PROVIDERS_URL,
     };
   }
 }
 
-// Email & Password Sign-In
+// Email & Password Sign-In with wrong password failure validation
 export async function loginWithEmailPassword(email: string, pass: string) {
   try {
-    const result = await signInWithEmailAndPassword(auth, email, pass);
+    const result = await signInWithEmailAndPassword(auth, email.trim(), pass);
     const user = result.user;
     setLocalPlayerUid(user.uid);
     return { success: true, user };
@@ -232,26 +243,47 @@ export async function loginWithEmailPassword(email: string, pass: string) {
       err?.code === 'auth/operation-not-allowed' ||
       err?.code === 'auth/admin-restricted-operation';
 
+    let errorMsg = 'লগ ইন ব্যর্থ হয়েছে। অনুগ্রহ করে সঠিক তথ্য দিয়ে চেষ্টা করুন।';
+    if (err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
+      errorMsg = 'ভুল পাসওয়ার্ড বা ইমেইল! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন। (Incorrect password or email credentials)';
+    } else if (err?.code === 'auth/user-not-found') {
+      errorMsg = 'এই ইমেইলে কোনো একাউন্ট নেই। অনুগ্রহ করে নতুন একাউন্ট তৈরি করুন। (Account not found. Please register.)';
+    } else if (err?.code === 'auth/invalid-email') {
+      errorMsg = 'অবৈধ ইমেইল ঠিকানা! সঠিক ইমেইল প্রদান করুন। (Invalid email format)';
+    } else if (err?.code === 'auth/too-many-requests') {
+      errorMsg = 'অনেকবার ভুল পাসওয়ার্ড দেওয়া হয়েছে। অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন। (Too many failed attempts.)';
+    } else if (requiresConsoleActivation) {
+      errorMsg = 'Firebase Console-এ Email/Password provider সক্রিয় নেই। Console থেকে Enable করুন।';
+    } else if (err?.message) {
+      errorMsg = err.message;
+    }
+
     return {
       success: false,
       code: err?.code || 'auth/unknown',
-      message: requiresConsoleActivation
-        ? 'Email/Password provider is not yet enabled in the Firebase Console. You can enable it in the Firebase Console or continue with Casino Player Account.'
-        : err?.message || 'Invalid credentials or sign-in failed',
+      message: errorMsg,
       requiresConsoleActivation,
       consoleUrl: FIREBASE_AUTH_PROVIDERS_URL,
     };
   }
 }
 
-// Sign-Out
+// Sign-Out: Thoroughly terminate authenticated session and purge stored player credentials
 export async function logOutUser() {
   try {
     await signOut(auth);
-    // Generate fresh player id for guest session
-    const freshGuestUid = 'player_' + Math.random().toString(36).substring(2, 10);
-    setLocalPlayerUid(freshGuestUid);
-    return { success: true, freshGuestUid };
+    setLocalPlayerUid('');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('dhaka_slots_player_uid');
+      localStorage.removeItem('dhaka_slots_user_profile');
+      localStorage.removeItem('dhaka_slots_balance');
+      localStorage.removeItem('dhaka_slots_transactions');
+      localStorage.removeItem('dhaka_slots_vip_stats');
+      localStorage.removeItem('dhaka_slots_referral_stats');
+      localStorage.removeItem('dhaka_slots_claimed_bonuses');
+      sessionStorage.clear();
+    }
+    return { success: true };
   } catch (err: any) {
     console.warn('[Firebase] Sign out issue:', err);
     return { success: false, message: err?.message };

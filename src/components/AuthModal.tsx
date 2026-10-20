@@ -91,18 +91,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     soundManager.playClick();
     resetForm();
 
-    if (!email || !password) {
-      setErrorMsg('Please fill in both email and password.');
+    if (!email.trim() || !password) {
+      setErrorMsg('ইমেইল এবং পাসওয়ার্ড উভয় ফিল্ড পূরণ করুন। (Please fill in both email and password.)');
       return;
     }
 
     if (mode === 'register') {
       if (password.length < 6) {
-        setErrorMsg('Password must be at least 6 characters long.');
+        setErrorMsg('পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে। (Password must be at least 6 characters long.)');
         return;
       }
       if (password !== confirmPassword) {
-        setErrorMsg('Passwords do not match.');
+        setErrorMsg('উভয় পাসওয়ার্ড মেলেনি! অনুগ্রহ করে নিশ্চিত করুন। (Passwords do not match.)');
         return;
       }
     }
@@ -111,7 +111,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     if (mode === 'register') {
       const res = await registerWithEmailPassword(
-        email,
+        email.trim(),
         password,
         displayName || email.split('@')[0],
         phone
@@ -120,30 +120,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
       if (res.success && res.user) {
         soundManager.playCoinSound();
-        setSuccessMsg('Account registered successfully! Welcome to DhakaSlots.');
+        setSuccessMsg('একাউন্ট সফলভাবে তৈরি হয়েছে! (Account registered successfully with 0 balance). Welcome to DhakaSlots.');
         setTimeout(() => {
           onAuthSuccess(res.user!.uid, displayName || email.split('@')[0]);
           onClose();
         }, 1000);
       } else {
-        setErrorMsg(res.message || 'Registration failed');
+        setErrorMsg(res.message || 'রেজিস্ট্রেশন সম্পন্ন করা সম্ভব হয়নি।');
         if (res.requiresConsoleActivation) {
           setConsoleHelpNeeded(true);
         }
       }
     } else {
-      const res = await loginWithEmailPassword(email, password);
+      const res = await loginWithEmailPassword(email.trim(), password);
       setIsLoading(false);
 
       if (res.success && res.user) {
         soundManager.playCoinSound();
-        setSuccessMsg('Welcome back! Logging you in...');
+        setSuccessMsg('লগ ইন সফল হয়েছে! আপনাকে স্বাগতম... (Sign in successful)');
         setTimeout(() => {
           onAuthSuccess(res.user!.uid, res.user!.displayName || email.split('@')[0]);
           onClose();
         }, 800);
       } else {
-        setErrorMsg(res.message || 'Log in failed');
+        setErrorMsg(res.message || 'ভুল পাসওয়ার্ড বা ইমেইল! লগ ইন ব্যর্থ হয়েছে।');
         if (res.requiresConsoleActivation) {
           setConsoleHelpNeeded(true);
         }
