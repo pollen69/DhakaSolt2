@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Healthcheck / connectivity test
+    match /test/{docId} {
+      allow get: if true;
+      allow write: if false;
+    }
+
+    // Global security helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAllowedUser(userId) {
+      return request.auth == null || request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'balance', 'vipPoints'])
+        && data.uid is string && data.uid.size() <= 128
+        && data.balance is number && data.balance >= 0
+        && data.vipPoints is number && data.vipPoints >= 0
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+        && (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20))
+        && (!('email' in data) || (data.email is string && data.email.size() <= 120))
+        && (!('vipLevel' in data) || (data.vipLevel is string && data.vipLevel.size() <= 50))
+        && (!('referralCode' in data) || (data.referralCode is string && data.referralCode.size() <= 50))
+        && (!('referredBy' in data) || (data.referredBy is string && data.referredBy.size() <= 50))
+        && (!('favorites' in data) || (data.favorites is list && data.favorites.size() <= 50))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'amount', 'method', 'status', 'timestamp'])
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.type in ['deposit', 'withdraw']
+        && data.amount is number && data.amount > 0
+        && data.method in ['bkash', 'nagad', 'rocket']
+        && data.status in ['pending', 'completed', 'failed']
+        && data.timestamp is string && data.timestamp.size() <= 50
+        && (!('accountNumber' in data) || (data.accountNumber is string && data.accountNumber.size() <= 30))
+        && (!('trxId' in data) || (data.trxId is string && data.trxId.size() <= 50));
+    }
+
+    function isValidSpin(data) {
+      return data.keys().hasAll(['id', 'userId', 'gameId', 'betAmount', 'winAmount', 'timestamp'])
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.gameId is string && data.gameId.size() <= 100
+        && data.betAmount is number && data.betAmount >= 0
+        && data.winAmount is number && data.winAmount >= 0
+        && data.timestamp is string && data.timestamp.size() <= 50
+        && (!('gameTitle' in data) || (data.gameTitle is string && data.gameTitle.size() <= 100));
+    }
+
+    function isValidJackpot(data) {
+      return data.keys().hasAll(['id', 'grand', 'major', 'mini', 'updatedAt'])
+        && data.id is string && data.id.size() <= 64
+        && data.grand is number && data.grand >= 0
+        && data.major is number && data.major >= 0
+        && data.mini is number && data.mini >= 0
+        && data.updatedAt is string && data.updatedAt.size() <= 50
+        && (!('lastWonBy' in data) || (data.lastWonBy is string && data.lastWonBy.size() <= 100))
+        && (!('lastWonAmount' in data) || (data.lastWonAmount is number && data.lastWonAmount >= 0));
+    }
+
+    // User profile documents
+    match /users/{userId} {
+      allow get: if isAllowedUser(userId);
+      allow list: if false;
+      allow create: if isAllowedUser(userId) && request.resource.data.uid == userId && isValidUser(request.resource.data);
+      allow update: if isAllowedUser(userId) && request.resource.data.uid == userId && isValidUser(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Transactions collection
+    match /transactions/{transactionId} {
+      allow get: if request.auth == null || resource.data.userId == request.auth.uid;
+      allow list: if request.auth == null || resource.data.userId == request.auth.uid;
+      allow create: if (request.auth == null || request.resource.data.userId == request.auth.uid) && isValidTransaction(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // Spin history collection
+    match /spins/{spinId} {
+      allow get: if request.auth == null || resource.data.userId == request.auth.uid;
+      allow list: if request.auth == null || resource.data.userId == request.auth.uid;
+      allow create: if (request.auth == null || request.resource.data.userId == request.auth.uid) && isValidSpin(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // Global community progressive jackpot
+    match /jackpots/{jackpotId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isValidJackpot(request.resource.data);
+      allow delete: if false;
+    }
+  }
+}

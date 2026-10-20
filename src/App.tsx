@@ -20,6 +20,22 @@ import { ReferralModal } from './components/ReferralModal';
 import { SupportModal } from './components/SupportModal';
 import { CasinoMenuBar } from './components/CasinoMenuBar';
 import { AccountSettingsModal } from './components/AccountSettingsModal';
+import { AuthModal } from './components/AuthModal';
+import { TopAuthBanner } from './components/TopAuthBanner';
+import { FirebaseBackendModal } from './components/FirebaseBackendModal';
+import {
+  testFirebaseConnection,
+  listenAuthState,
+  syncUserDataToFirestore,
+  fetchUserDataFromFirestore,
+  logTransactionToFirestore,
+  logSpinToFirestore,
+  logOutUser,
+  subscribeToJackpot,
+  incrementJackpotInFirestore,
+  fetchUserTransactionsFromFirestore,
+} from './lib/firebase';
+import type { User as FirebaseUser } from 'firebase/auth';
 import {
   Sparkles,
   ShieldCheck,
@@ -37,60 +53,97 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // Local state with localStorage persistence
+  // Clean initial profile definition
+  const BLANK_PROFILE: UserProfile = {
+    id: '',
+    username: '',
+    fullName: '',
+    phone: '',
+    email: '',
+    balance: 0,
+    vipLevel: 1,
+    totalDeposit: 0,
+    totalWithdraw: 0,
+    avatar: '👤',
+    defaultBkash: '',
+    defaultNagad: '',
+    withdrawalPin: '1234',
+    joinedDate: '',
+  };
+
+  // Automatically purge legacy demo accounts and mock balances from cache
+  if (typeof window !== 'undefined') {
+    try {
+      const cached = localStorage.getItem('dhaka_slots_user_profile');
+      const uid = localStorage.getItem('dhaka_slots_player_uid');
+      if (
+        cached &&
+        (cached.includes('Parag') ||
+          cached.includes('DS-784219') ||
+          cached.includes('akib') ||
+          cached.includes('Demo') ||
+          cached.includes('demo') ||
+          !uid ||
+          uid.startsWith('player_'))
+      ) {
+        localStorage.removeItem('dhaka_slots_user_profile');
+        localStorage.removeItem('dhaka_slots_balance');
+        localStorage.removeItem('dhaka_slots_transactions');
+        localStorage.removeItem('dhaka_slots_vip_stats');
+        localStorage.removeItem('dhaka_slots_referral_stats');
+        localStorage.removeItem('dhaka_slots_player_uid');
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  // Local state: strictly 0 balance for unauthenticated users
   const [balance, setBalance] = useState<number>(() => {
+    const uid = typeof window !== 'undefined' ? localStorage.getItem('dhaka_slots_player_uid') : null;
+    if (!uid || uid.startsWith('player_')) return 0;
     const saved = localStorage.getItem('dhaka_slots_balance');
-    return saved !== null ? parseFloat(saved) : 2500;
+    return saved !== null ? Math.max(0, parseFloat(saved)) : 0;
   });
 
   const [profile, setProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('dhaka_slots_user_profile');
-    if (saved) {
+    const uid = typeof window !== 'undefined' ? localStorage.getItem('dhaka_slots_player_uid') : null;
+    if (saved && uid && !uid.startsWith('player_')) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (
+          parsed.id &&
+          parsed.username &&
+          !parsed.username.toLowerCase().includes('demo') &&
+          parsed.id !== 'DS-784219' &&
+          parsed.username !== 'Parag_Player'
+        ) {
+          return parsed;
+        }
       } catch {
         // Fallback
       }
     }
-    return {
-      id: 'DS-784219',
-      username: 'Parag_Player',
-      fullName: 'Akib Hasnath Parag',
-      phone: '01614418086',
-      email: 'akibhasnathparag@gmail.com',
-      balance: 2500,
-      vipLevel: 2,
-      totalDeposit: 2500,
-      totalWithdraw: 0,
-      avatar: '👑',
-      defaultBkash: '01614418086',
-      defaultNagad: '01614418086',
-      withdrawalPin: '1234',
-      joinedDate: 'Oct 2026',
-    };
+    return BLANK_PROFILE;
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('dhaka_slots_transactions');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (
+          Array.isArray(parsed) &&
+          !parsed.some((t: any) => t.id === 'tx_init_1')
+        ) {
+          return parsed;
+        }
       } catch {
         // Fallback
       }
     }
-    return [
-      {
-        id: 'tx_init_1',
-        type: 'deposit',
-        method: 'bkash',
-        amount: 2500,
-        status: 'completed',
-        timestamp: Date.now() - 3600000 * 2,
-        trxId: 'BK9X8241L',
-        accountNumber: '01614418086',
-      },
-    ];
+    return [];
   });
 
   const [claimedBonuses, setClaimedBonuses] = useState<string[]>(() => {
@@ -98,69 +151,47 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // VIP Loyalty State
+  // VIP Loyalty State - clean start at Level 1 with 0 turnover
   const [vipStats, setVipStats] = useState<VIPUserStats>(() => {
     const saved = localStorage.getItem('dhaka_slots_vip_stats');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.turnover === 'number' && parsed.turnover !== 35000) {
+          return parsed;
+        }
       } catch {
         // Fallback
       }
     }
     return {
-      turnover: 35000, // Starting at VIP 2 Silver for immediate preview
-      currentLevel: 2,
-      claimedLevelBonuses: [1], // Level 1 claimed, Level 2 claimable
+      turnover: 0,
+      currentLevel: 1,
+      claimedLevelBonuses: [],
       monthlyCashbackClaimed: 0,
     };
   });
 
-  // Referral Program State
+  // Referral Program State - clean start
   const [referralStats, setReferralStats] = useState<ReferralProgramStats>(() => {
     const saved = localStorage.getItem('dhaka_slots_referral_stats');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed.totalInvited !== 3) {
+          return parsed;
+        }
       } catch {
         // Fallback
       }
     }
     return {
-      referralCode: 'DHAKA777',
-      totalInvited: 3,
-      successfulDeposits: 2,
-      totalEarned: 500,
-      unclaimedBonus: 250, // 1 friend deposit reward ready to claim
-      friends: [
-        {
-          id: 'ref_1',
-          phone: '017***4291',
-          registeredAt: Date.now() - 86400000 * 3,
-          firstDepositAmount: 1000,
-          status: 'completed',
-          rewardAmount: 250,
-          claimed: true,
-        },
-        {
-          id: 'ref_2',
-          phone: '018***8812',
-          registeredAt: Date.now() - 86400000 * 1,
-          firstDepositAmount: 2000,
-          status: 'completed',
-          rewardAmount: 250,
-          claimed: false, // Ready to claim!
-        },
-        {
-          id: 'ref_3',
-          phone: '019***3345',
-          registeredAt: Date.now() - 3600000 * 4,
-          firstDepositAmount: 0,
-          status: 'pending',
-          rewardAmount: 250,
-          claimed: false,
-        },
-      ],
+      referralCode: '',
+      totalInvited: 0,
+      successfulDeposits: 0,
+      totalEarned: 0,
+      unclaimedBonus: 0,
+      friends: [],
     };
   });
 
@@ -180,10 +211,222 @@ export default function App() {
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted);
   const [quickCopied, setQuickCopied] = useState<boolean>(false);
 
+  // Favorites stored in local storage and synced with Firebase
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('dhaka_slots_favorites');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleToggleFavorite = (gameId: string) => {
+    setFavorites((prev) => {
+      const next = prev.includes(gameId)
+        ? prev.filter((id) => id !== gameId)
+        : [...prev, gameId];
+      try {
+        localStorage.setItem('dhaka_slots_favorites', JSON.stringify(next));
+      } catch (err) {
+        console.error('Failed to save favorites to localStorage', err);
+      }
+      return next;
+    });
+  };
+
+  // Firebase connection and authentication state
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [firebaseUid, setFirebaseUid] = useState<string>('');
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
+  const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+  const [isBackendModalOpen, setIsBackendModalOpen] = useState<boolean>(false);
+  const [jackpotAmount, setJackpotAmount] = useState<number>(8888888);
+
   // Derive current VIP tier
   const currentTier = getVIPTierByTurnover(vipStats.turnover);
   const nextTier = getNextVIPTier(currentTier.level);
   const tierProgress = calculateTurnoverProgress(vipStats.turnover, currentTier, nextTier);
+
+  // Initialize Firebase & verify Firestore connectivity
+  useEffect(() => {
+    testFirebaseConnection().then((connected) => {
+      if (connected) setIsFirebaseConnected(true);
+    });
+
+    // Subscribe to global progressive jackpot pool
+    const unsubJackpot = subscribeToJackpot((jp) => {
+      if (jp && typeof jp.grand === 'number') {
+        setJackpotAmount(jp.grand);
+      }
+    });
+
+    const unsubscribeAuth = listenAuthState(async (user, uid) => {
+      setFirebaseUser(user);
+      setFirebaseUid(uid);
+      setIsFirebaseConnected(true);
+      if (uid) {
+        try {
+          const remoteData = await fetchUserDataFromFirestore(uid);
+          if (remoteData) {
+            if (typeof remoteData.balance === 'number') {
+              setBalance(remoteData.balance);
+            }
+            if (Array.isArray(remoteData.favorites) && remoteData.favorites.length > 0) {
+              setFavorites(remoteData.favorites);
+            }
+            if (remoteData.displayName) {
+              setProfile((prev) => ({
+                ...prev,
+                username: remoteData.displayName,
+                fullName: remoteData.displayName,
+                email: remoteData.email || prev.email,
+                phone: remoteData.phoneNumber || prev.phone,
+              }));
+            }
+          } else {
+            await syncUserDataToFirestore(uid, {
+              balance,
+              vipPoints: vipStats.turnover,
+              displayName: profile.fullName,
+              phoneNumber: profile.phone,
+              favorites,
+            });
+          }
+
+          // Fetch user transactions from Firestore
+          const remoteTxs = await fetchUserTransactionsFromFirestore(uid);
+          if (remoteTxs && remoteTxs.length > 0) {
+            setTransactions(remoteTxs);
+          }
+        } catch (err) {
+          console.warn('[Firebase] Initial sync notice:', err);
+        }
+      }
+    });
+
+    return () => {
+      unsubJackpot();
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // Check if player has an active authenticated account
+  const isAuthenticated = Boolean(
+    (firebaseUser && !firebaseUser.isAnonymous) ||
+    (firebaseUid && !firebaseUid.startsWith('player_')) ||
+    (profile.id && profile.username && !profile.username.toLowerCase().includes('demo') && profile.id !== 'DS-784219' && profile.username !== 'Parag_Player')
+  );
+
+  // Auth Success Handler: registered or signed in users start with clean 0 balance (or remote balance)
+  const handleAuthSuccess = async (uid: string, username: string) => {
+    setFirebaseUid(uid);
+    setIsFirebaseConnected(true);
+    localStorage.setItem('dhaka_slots_player_uid', uid);
+
+    try {
+      const remote = await fetchUserDataFromFirestore(uid);
+      if (remote) {
+        const userBal = typeof remote.balance === 'number' ? remote.balance : 0;
+        setBalance(userBal);
+        localStorage.setItem('dhaka_slots_balance', userBal.toString());
+        if (Array.isArray(remote.favorites)) setFavorites(remote.favorites);
+        const remoteProf: UserProfile = {
+          id: uid,
+          username: remote.displayName || username || 'VIP_Player',
+          fullName: remote.displayName || username || 'VIP Player',
+          phone: remote.phoneNumber || '',
+          email: remote.email || '',
+          balance: userBal,
+          vipLevel: 1,
+          totalDeposit: 0,
+          totalWithdraw: 0,
+          avatar: '👑',
+          defaultBkash: remote.phoneNumber || '',
+          defaultNagad: remote.phoneNumber || '',
+          withdrawalPin: '1234',
+          joinedDate: new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            year: 'numeric',
+          }),
+        };
+        setProfile(remoteProf);
+        localStorage.setItem('dhaka_slots_user_profile', JSON.stringify(remoteProf));
+      } else {
+        const newProf: UserProfile = {
+          id: uid,
+          username: username || 'VIP_Player',
+          fullName: username || 'VIP Player',
+          phone: '',
+          email: `${username
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')}@dhakaslots.vip`,
+          balance: 0,
+          vipLevel: 1,
+          totalDeposit: 0,
+          totalWithdraw: 0,
+          avatar: '👑',
+          defaultBkash: '',
+          defaultNagad: '',
+          withdrawalPin: '1234',
+          joinedDate: new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            year: 'numeric',
+          }),
+        };
+        setBalance(0);
+        setProfile(newProf);
+        localStorage.setItem('dhaka_slots_user_profile', JSON.stringify(newProf));
+        localStorage.setItem('dhaka_slots_balance', '0');
+        await syncUserDataToFirestore(uid, {
+          balance: 0,
+          vipPoints: 0,
+          displayName: newProf.fullName,
+          email: newProf.email,
+        });
+      }
+      const remoteTxs = await fetchUserTransactionsFromFirestore(uid);
+      setTransactions(remoteTxs || []);
+    } catch (err) {
+      console.warn('[Firebase] Auth success sync issue:', err);
+    }
+  };
+
+  // Sign Out Handler: thoroughly reset to fresh clean unauthenticated state
+  const handleSignOut = async () => {
+    soundManager.playClick();
+    await logOutUser();
+    setFirebaseUser(null);
+    setFirebaseUid('');
+    setBalance(0);
+    setProfile(BLANK_PROFILE);
+    setTransactions([]);
+    setVipStats({
+      turnover: 0,
+      currentLevel: 1,
+      claimedLevelBonuses: [],
+      monthlyCashbackClaimed: 0,
+    });
+    localStorage.removeItem('dhaka_slots_player_uid');
+    localStorage.removeItem('dhaka_slots_user_profile');
+    localStorage.removeItem('dhaka_slots_balance');
+    localStorage.removeItem('dhaka_slots_transactions');
+    localStorage.removeItem('dhaka_slots_vip_stats');
+  };
+
+  // Sync player profile, balance & favorites to Firebase Firestore
+  useEffect(() => {
+    if (firebaseUid) {
+      syncUserDataToFirestore(firebaseUid, {
+        balance,
+        vipPoints: vipStats.turnover,
+        displayName: profile.fullName,
+        phoneNumber: profile.phone,
+        favorites,
+      });
+    }
+  }, [balance, vipStats.turnover, favorites, firebaseUid, profile.fullName, profile.phone]);
 
   // Sync state to local storage
   useEffect(() => {
@@ -229,11 +472,22 @@ export default function App() {
         gameTitle: details,
       };
       setTransactions((prev) => [newTx, ...prev.slice(0, 49)]);
+
+      // Log spin outcome to Firestore
+      if (firebaseUid) {
+        logSpinToFirestore(firebaseUid, {
+          gameId: selectedGame?.id || 'slot-game',
+          gameTitle: details || selectedGame?.title || 'Slot Machine',
+          betAmount: type === 'bet' ? Math.abs(delta) : 0,
+          winAmount: type === 'win' ? Math.abs(delta) : 0,
+        });
+      }
     }
 
-    // Accumulate wagering volume toward VIP tier
+    // Accumulate wagering volume toward VIP tier & increment community jackpot
     if (type === 'bet') {
       const wagerAmt = Math.abs(delta);
+      incrementJackpotInFirestore(wagerAmt);
       setVipStats((prev) => {
         const newTurnover = prev.turnover + wagerAmt;
         const newTier = getVIPTierByTurnover(newTurnover);
@@ -254,6 +508,10 @@ export default function App() {
       ...prev,
       totalDeposit: prev.totalDeposit + amount,
     }));
+
+    if (firebaseUid) {
+      logTransactionToFirestore(firebaseUid, newTx);
+    }
   };
 
   // Withdraw Success Handler
@@ -264,6 +522,10 @@ export default function App() {
       ...prev,
       totalWithdraw: prev.totalWithdraw + amount,
     }));
+
+    if (firebaseUid) {
+      logTransactionToFirestore(firebaseUid, newTx);
+    }
 
     // Simulate completion after 20 seconds
     setTimeout(() => {
@@ -391,29 +653,6 @@ export default function App() {
     setIsMuted(muted);
   };
 
-  // Favorites stored in local storage
-  const [favorites, setFavorites] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('dhaka_slots_favorites');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const handleToggleFavorite = (gameId: string) => {
-    setFavorites((prev) => {
-      const next = prev.includes(gameId)
-        ? prev.filter((id) => id !== gameId)
-        : [...prev, gameId];
-      try {
-        localStorage.setItem('dhaka_slots_favorites', JSON.stringify(next));
-      } catch (err) {
-        console.error('Failed to save favorites to localStorage', err);
-      }
-      return next;
-    });
-  };
 
   // Filtered games
   const filteredGames = SLOT_GAMES.filter((g) => {
@@ -442,6 +681,7 @@ export default function App() {
         profile={profile}
         currentTier={currentTier}
         selectedProvider={selectedProvider}
+        isAuthenticated={isAuthenticated}
         onSelectProvider={(p) => {
           setSelectedGame(null);
           setSelectedCategory('ALL');
@@ -461,8 +701,16 @@ export default function App() {
         onOpenReferral={() => setIsReferralOpen(true)}
         onOpenSupport={() => setIsSupportOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode || 'login');
+          setIsAuthOpen(true);
+        }}
+        onOpenBackendModal={() => setIsBackendModalOpen(true)}
+        onSignOut={handleSignOut}
+        firebaseUser={firebaseUser}
         isMuted={isMuted}
         onToggleMute={handleToggleMute}
+        isFirebaseConnected={isFirebaseConnected}
       />
 
       {/* Main Content Area */}
@@ -482,6 +730,30 @@ export default function App() {
         ) : (
           /* Casino Lobby View */
           <>
+            {/* Top of Homepage: Prominent Player Login / Registration / Own Account Status Banner */}
+            <TopAuthBanner
+              isAuthenticated={isAuthenticated}
+              profile={profile}
+              balance={balance}
+              currentTier={currentTier}
+              isFirebaseConnected={isFirebaseConnected}
+              onOpenAuth={(mode) => {
+                setAuthModalMode(mode || 'login');
+                setIsAuthOpen(true);
+              }}
+              onOpenBackendModal={() => setIsBackendModalOpen(true)}
+              onOpenDeposit={() => {
+                setCashierTab('deposit');
+                setIsCashierOpen(true);
+              }}
+              onOpenWithdraw={() => {
+                setCashierTab('withdraw');
+                setIsCashierOpen(true);
+              }}
+              onSignOut={handleSignOut}
+              onAuthSuccess={handleAuthSuccess}
+            />
+
             {/* Dedicated Casino Category & Provider Menu Bar with Settings */}
             <CasinoMenuBar
               selectedProvider={selectedProvider}
@@ -503,7 +775,25 @@ export default function App() {
             />
 
             {/* Hero Showcase with Progressive Jackpot */}
-            <HeroBanner />
+            <HeroBanner
+              isAuthenticated={isAuthenticated}
+              onOpenDeposit={() => {
+                setCashierTab('deposit');
+                setIsCashierOpen(true);
+              }}
+              onOpenRegister={() => {
+                setAuthModalMode('register');
+                setIsAuthOpen(true);
+              }}
+              onOpenLogin={() => {
+                setAuthModalMode('login');
+                setIsAuthOpen(true);
+              }}
+              onPlayFeatured={() => {
+                setSelectedProvider('ALL');
+                setSelectedCategory('ALL');
+              }}
+            />
 
             {/* Games Grid Section */}
             <section className="mb-12">
@@ -799,7 +1089,7 @@ export default function App() {
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-md overflow-hidden border border-amber-500/40 shrink-0 shadow-sm bg-neutral-900">
               <img
-                src="/src/assets/images/dhakaslots_logo_crest_1792258104215.jpg"
+                src="/images/dhakaslots_logo_crest_1792258104215.jpg"
                 alt="DhakaSlots Logo"
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -827,9 +1117,28 @@ export default function App() {
               24/7 Agent Support
             </button>
             <span>·</span>
-            <span>Responsible Gaming 18+</span>
+            <button
+              onClick={() => {
+                setAuthModalMode('login');
+                setIsAuthOpen(true);
+              }}
+              className="hover:text-amber-400 text-amber-300 font-semibold transition-colors"
+            >
+              Player Log In / Register
+            </button>
             <span>·</span>
             <span>bKash & Nagad Verified Merchant</span>
+            <span>·</span>
+            <button
+              onClick={() => setIsBackendModalOpen(true)}
+              className="inline-flex items-center gap-1.5 text-slate-300 hover:text-amber-300 transition-colors cursor-pointer p-1 rounded-lg hover:bg-neutral-800"
+              title="Open Firebase Console & Live Backend Diagnostics"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isFirebaseConnected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]' : 'bg-amber-400 animate-pulse'}`} />
+              <span className={isFirebaseConnected ? 'text-emerald-400/90 font-medium' : 'text-amber-400'}>
+                {isFirebaseConnected ? 'Firebase Console & Backend Hub' : 'Firebase Connecting...'}
+              </span>
+            </button>
           </div>
         </div>
       </footer>
@@ -855,6 +1164,15 @@ export default function App() {
         onUpdateProfile={setProfile}
         isMuted={isMuted}
         onToggleMute={handleToggleMute}
+        isFirebaseConnected={isFirebaseConnected}
+        firebaseUserId={firebaseUid || firebaseUser?.uid}
+        firebaseUser={firebaseUser}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode || 'login');
+          setIsAuthOpen(true);
+        }}
+        onOpenBackendModal={() => setIsBackendModalOpen(true)}
+        onSignOut={handleSignOut}
       />
 
       {/* VIP Club Modal */}
@@ -907,6 +1225,21 @@ export default function App() {
           setCashierTab('deposit');
           setIsCashierOpen(true);
         }}
+      />
+
+      {/* Authentication Modal (Log In / Register) */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        initialMode={authModalMode}
+        onAuthSuccess={handleAuthSuccess}
+      />
+
+      {/* Firebase Console & Live Backend Hub Modal */}
+      <FirebaseBackendModal
+        isOpen={isBackendModalOpen}
+        onClose={() => setIsBackendModalOpen(false)}
+        currentUid={firebaseUid}
       />
     </div>
   );

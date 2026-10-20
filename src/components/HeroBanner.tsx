@@ -4,9 +4,18 @@ import { Sparkles, Flame, ShieldCheck, Crown, Zap, Trophy, Coins } from 'lucide-
 interface HeroBannerProps {
   onOpenDeposit?: () => void;
   onPlayFeatured?: () => void;
+  onOpenRegister?: () => void;
+  onOpenLogin?: () => void;
+  isAuthenticated?: boolean;
 }
 
-export const HeroBanner: React.FC<HeroBannerProps> = () => {
+export const HeroBanner: React.FC<HeroBannerProps> = ({
+  onOpenDeposit,
+  onPlayFeatured,
+  onOpenRegister,
+  onOpenLogin,
+  isAuthenticated = false,
+}) => {
   // Live progressive jackpot counter
   const [jackpot, setJackpot] = useState<number>(4892350.75);
 
@@ -22,7 +31,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = () => {
       {/* Background Hero Image with measured contrast scrim and colourful lighting leaks */}
       <div className="absolute inset-0 z-0">
         <img
-          src="/src/assets/images/hero_slot_banner_1792230671421.jpg"
+          src="/images/hero_slot_banner_1792230671421.jpg"
           alt="Golden Slot Casino Banner"
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover opacity-40 scale-105"
@@ -130,6 +139,53 @@ export const HeroBanner: React.FC<HeroBannerProps> = () => {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Action Buttons: Log In & Register (0 Balance) or Deposit */}
+        <div className="flex flex-wrap items-center gap-3 mb-7">
+          {!isAuthenticated ? (
+            <>
+              {onOpenRegister && (
+                <button
+                  onClick={onOpenRegister}
+                  className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-black font-extrabold text-sm shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:shadow-[0_0_35px_rgba(245,158,11,0.6)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Crown className="w-4 h-4 fill-black" />
+                  <span>Register Account (৳0 Balance)</span>
+                </button>
+              )}
+              {onOpenLogin && (
+                <button
+                  onClick={onOpenLogin}
+                  className="px-5 py-3 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 border border-amber-500/40 hover:border-amber-400 text-amber-300 hover:text-white font-bold text-sm shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                >
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  <span>Log In to Account</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {onOpenDeposit && (
+                <button
+                  onClick={onOpenDeposit}
+                  className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-extrabold text-sm shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                >
+                  <Coins className="w-4 h-4 fill-black" />
+                  <span>Deposit bKash/Nagad</span>
+                </button>
+              )}
+              {onPlayFeatured && (
+                <button
+                  onClick={onPlayFeatured}
+                  className="px-5 py-3 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 border border-amber-500/40 text-amber-300 font-bold text-sm transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  <span>Browse All Slots</span>
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Colourful Trust & Highlights Strip */}

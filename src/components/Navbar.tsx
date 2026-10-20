@@ -13,8 +13,13 @@ import {
   X,
   Headphones,
   ChevronRight,
-  Settings
+  Settings,
+  LogIn,
+  LogOut,
+  Database,
+  UserPlus
 } from 'lucide-react';
+import { User as FirebaseUser } from 'firebase/auth';
 
 interface NavbarProps {
   balance: number;
@@ -30,8 +35,14 @@ interface NavbarProps {
   onOpenReferral: () => void;
   onOpenSupport: () => void;
   onOpenSettings: () => void;
+  onOpenAuth: (mode?: 'login' | 'register') => void;
+  onOpenBackendModal: () => void;
+  onSignOut?: () => void;
+  firebaseUser?: FirebaseUser | null;
+  isAuthenticated?: boolean;
   isMuted?: boolean;
   onToggleMute?: () => void;
+  isFirebaseConnected?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -48,6 +59,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenReferral,
   onOpenSupport,
   onOpenSettings,
+  onOpenAuth,
+  onOpenBackendModal,
+  onSignOut,
+  firebaseUser,
+  isAuthenticated = false,
+  isFirebaseConnected = false,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
@@ -82,7 +99,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.3)] group-hover:border-amber-400 group-hover:shadow-[0_0_22px_rgba(245,158,11,0.55)] group-hover:scale-105 transition-all duration-300 bg-neutral-900 shrink-0">
               <img
-                src="/src/assets/images/dhakaslots_logo_crest_1792258104215.jpg"
+                src="/images/dhakaslots_logo_crest_1792258104215.jpg"
                 alt="DhakaSlots Logo"
                 className="w-full h-full object-cover object-center"
                 referrerPolicy="no-referrer"
@@ -178,110 +195,253 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Zone 3: 1 primary action lockup (Balance, Cashier, Settings, Mute) */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* VIP Badge shortcut */}
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              onOpenVIP();
-            }}
-            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${currentTier.badgeColor} hover:scale-105`}
-            title="Open VIP Royalty Club"
-          >
-            <Crown className="w-3.5 h-3.5 fill-current" />
-            <span>{currentTier.name}</span>
-          </button>
+        {!isAuthenticated ? (
+          /* Unauthenticated State: Show Log In & Registration prominently at the top of the homepage */
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenAuth('login');
+              }}
+              className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold text-amber-300 hover:text-white border border-amber-500/40 hover:border-amber-400 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4 text-amber-400" />
+              <span>Log In</span>
+            </button>
 
-          {/* Balance display */}
-          <div className="flex items-center bg-neutral-900 border border-amber-500/30 rounded-xl px-2.5 sm:px-3 py-1.5 shadow-sm">
-            <Coins className="w-4 h-4 text-amber-400 mr-2 shrink-0" />
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 block -mb-0.5 font-medium uppercase">BDT</span>
-              <span className="text-xs sm:text-sm font-bold font-mono-num text-amber-300 whitespace-nowrap">
-                ৳{balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenAuth('register');
+              }}
+              className="flex items-center gap-1.5 px-4 sm:px-5 py-2 text-xs sm:text-sm font-black text-black bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 rounded-xl transition-all shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:shadow-[0_0_28px_rgba(245,158,11,0.6)] active:scale-95 cursor-pointer whitespace-nowrap"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Register</span>
+            </button>
+
+            {/* Firebase Cloud Sync Indicator */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenBackendModal();
+              }}
+              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-400/40 text-[11px] transition-all cursor-pointer shadow-sm group"
+              title="Open Firebase Console & Live Backend Diagnostics"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isFirebaseConnected
+                    ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]'
+                    : 'bg-amber-400 animate-ping'
+                }`}
+              />
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-slate-300 group-hover:text-amber-300 transition-colors flex items-center gap-1">
+                <Database className="w-3 h-3 text-amber-400" />
+                <span>{isFirebaseConnected ? 'Firebase Active' : 'Connecting'}</span>
               </span>
-            </div>
+            </button>
           </div>
+        ) : (
+          /* Authenticated State: Real user registered account */
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* VIP Badge shortcut */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenVIP();
+              }}
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${currentTier.badgeColor} hover:scale-105`}
+              title="Open VIP Royalty Club"
+            >
+              <Crown className="w-3.5 h-3.5 fill-current" />
+              <span>{currentTier.name}</span>
+            </button>
 
-          {/* Deposit Button */}
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              onOpenDeposit();
-            }}
-            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-bold text-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 rounded-xl transition-all shadow-md active:scale-95 whitespace-nowrap shrink-0"
-          >
-            <ArrowDownLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Deposit</span>
-          </button>
+            {/* Balance display */}
+            <div className="flex items-center bg-neutral-900 border border-amber-500/30 rounded-xl px-2.5 sm:px-3 py-1.5 shadow-sm">
+              <Coins className="w-4 h-4 text-amber-400 mr-2 shrink-0" />
+              <div className="text-right">
+                <span className="text-[10px] text-slate-400 block -mb-0.5 font-medium uppercase">BDT</span>
+                <span className="text-xs sm:text-sm font-bold font-mono-num text-amber-300 whitespace-nowrap">
+                  ৳{balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
 
-          {/* Withdraw Button */}
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              onOpenWithdraw();
-            }}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-200 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl transition-all whitespace-nowrap shrink-0"
-            title="Withdraw to bKash or Nagad"
-          >
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Withdraw</span>
-          </button>
+            {/* Deposit Button */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenDeposit();
+              }}
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-bold text-black bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 rounded-xl transition-all shadow-md active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Deposit</span>
+            </button>
 
-          {/* Account Settings Trigger */}
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              onOpenSettings();
-            }}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-slate-200 transition-colors"
-            title="Account Settings & Security"
-          >
-            <span className="text-sm">{profile.avatar || '👤'}</span>
-            <span className="hidden lg:inline text-xs font-semibold max-w-[80px] truncate">{profile.username}</span>
-          </button>
+            {/* Withdraw Button */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenWithdraw();
+              }}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-200 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer"
+              title="Withdraw to bKash or Nagad"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Withdraw</span>
+            </button>
 
-          {/* History Drawer Trigger */}
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              onOpenHistory();
-            }}
-            className="hidden sm:flex p-2 text-slate-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl transition-colors"
-            title="Transaction Ledger"
-          >
-            <History className="w-4 h-4" />
-          </button>
-        </div>
+            {/* Account Settings Trigger */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenSettings();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-amber-500/30 text-slate-200 transition-colors cursor-pointer"
+              title="Account Settings & Security"
+            >
+              <span className="text-sm">{profile.avatar || '👤'}</span>
+              <span className="hidden lg:inline text-xs font-semibold max-w-[80px] truncate">
+                {firebaseUser?.displayName || profile.username}
+              </span>
+            </button>
+
+            {/* Sign Out Button */}
+            {onSignOut && (
+              <button
+                onClick={() => {
+                  soundManager.playClick();
+                  onSignOut();
+                }}
+                className="hidden sm:flex p-2 text-slate-400 hover:text-rose-400 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl transition-colors cursor-pointer"
+                title="Sign Out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* History Drawer Trigger */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenHistory();
+              }}
+              className="hidden sm:flex p-2 text-slate-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl transition-colors cursor-pointer"
+              title="Transaction Ledger"
+            >
+              <History className="w-4 h-4" />
+            </button>
+
+            {/* Firebase Cloud Sync & Backend Hub Trigger */}
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onOpenBackendModal();
+              }}
+              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 hover:border-amber-400/40 text-[11px] transition-all cursor-pointer shadow-sm group"
+              title="Open Firebase Console & Live Backend Diagnostics"
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isFirebaseConnected
+                    ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]'
+                    : 'bg-amber-400 animate-ping'
+                }`}
+              />
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-slate-300 group-hover:text-amber-300 transition-colors flex items-center gap-1">
+                <Database className="w-3 h-3 text-amber-400" />
+                <span>{isFirebaseConnected ? 'Firebase Active' : 'Connecting'}</span>
+              </span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Slide-Down Mobile / Responsive Navigation Menu Drawer */}
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-neutral-800 bg-neutral-950/98 px-4 py-4 space-y-4 shadow-2xl animate-in slide-in-from-top-4 duration-200">
-          {/* User Quick Info in Menu */}
-          <div className="p-3 bg-neutral-900 rounded-2xl border border-neutral-800 flex items-center justify-between">
-            <button
-              onClick={() => handleMobileNav(onOpenSettings)}
-              className="flex items-center gap-2.5 text-left"
-            >
-              <div className="w-9 h-9 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center font-bold text-lg border border-amber-400/30">
-                {profile.avatar || '👤'}
-              </div>
+          {!isAuthenticated ? (
+            /* Unauthenticated User Card in Mobile Menu */
+            <div className="p-4 bg-gradient-to-r from-neutral-900 to-amber-950/40 rounded-2xl border border-amber-500/30 space-y-3">
               <div>
-                <span className="text-xs font-bold text-white block">{profile.username} · {currentTier.name} VIP</span>
-                <span className="text-[11px] text-emerald-400 font-mono-num">
-                  Max: ৳{currentTier.singleWithdrawalLimit.toLocaleString()} · Cashback: {currentTier.cashbackPercent}%
+                <span className="text-sm font-bold text-white block">Welcome to DhakaSlots VIP</span>
+                <span className="text-xs text-slate-400">
+                  Register or log in to play premier slots with verified bKash/Nagad wallet & 0 initial balance.
                 </span>
               </div>
-            </button>
-            <button
-              onClick={() => handleMobileNav(onOpenSettings)}
-              className="p-2 text-slate-400 hover:text-amber-400"
-              title="Settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={() => handleMobileNav(() => onOpenAuth('login'))}
+                  className="py-2.5 px-3 bg-neutral-800 hover:bg-neutral-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-400/30 text-center flex items-center justify-center gap-1.5"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Log In</span>
+                </button>
+                <button
+                  onClick={() => handleMobileNav(() => onOpenAuth('register'))}
+                  className="py-2.5 px-3 bg-gradient-to-r from-amber-400 to-amber-500 text-black font-extrabold text-xs rounded-xl text-center shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Register</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Authenticated User Quick Info in Menu */
+            <div className="p-3 bg-neutral-900 rounded-2xl border border-neutral-800 flex items-center justify-between">
+              <button
+                onClick={() => handleMobileNav(onOpenSettings)}
+                className="flex items-center gap-2.5 text-left flex-1 mr-2"
+              >
+                <div className="w-9 h-9 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center font-bold text-lg border border-amber-400/30">
+                  {profile.avatar || '👤'}
+                </div>
+                <div className="truncate">
+                  <span className="text-xs font-bold text-white block truncate">
+                    {firebaseUser?.displayName || profile.username} · {currentTier.name} VIP
+                  </span>
+                  <span className="text-[11px] text-amber-300 font-mono-num font-bold">
+                    ৳{balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BDT
+                  </span>
+                </div>
+              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {onSignOut && (
+                  <button
+                    onClick={() => handleMobileNav(onSignOut)}
+                    className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-neutral-800"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  onClick={() => handleMobileNav(onOpenSettings)}
+                  className="p-1.5 text-slate-400 hover:text-amber-400"
+                  title="Settings"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Quick Firebase Hub Button for Mobile */}
+          <button
+            onClick={() => handleMobileNav(onOpenBackendModal)}
+            className="w-full flex items-center justify-between p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs font-semibold text-amber-300"
+          >
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-amber-400" />
+              <span>Firebase Console & Live Backend</span>
+            </div>
+            <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+              Connected
+            </span>
+          </button>
 
           {/* Menu Sections Grid */}
           <div className="space-y-1">

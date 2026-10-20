@@ -15,7 +15,11 @@ import {
   VolumeX,
   Zap,
   Save,
-  KeyRound
+  KeyRound,
+  LogIn,
+  LogOut,
+  Database,
+  ExternalLink
 } from 'lucide-react';
 
 interface AccountSettingsModalProps {
@@ -26,6 +30,12 @@ interface AccountSettingsModalProps {
   onUpdateProfile: (updated: UserProfile) => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  isFirebaseConnected?: boolean;
+  firebaseUserId?: string;
+  firebaseUser?: any;
+  onOpenAuth?: (mode?: 'login' | 'register') => void;
+  onOpenBackendModal?: () => void;
+  onSignOut?: () => void;
 }
 
 const AVATAR_OPTIONS = ['👑', '🐯', '🐉', '🦁', '🦅', '💎', '🃏', '🚀'];
@@ -38,6 +48,12 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
   onUpdateProfile,
   isMuted,
   onToggleMute,
+  isFirebaseConnected = false,
+  firebaseUserId,
+  firebaseUser,
+  onOpenAuth,
+  onOpenBackendModal,
+  onSignOut,
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'payments' | 'security' | 'preferences'>('profile');
   const [formData, setFormData] = useState<UserProfile>({ ...profile });
@@ -307,6 +323,78 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
                     defaultChecked
                     className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
                   />
+                </div>
+              </div>
+
+              {/* Firebase Cloud Account & Authentication Status */}
+              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-2.5 h-2.5 rounded-full ${isFirebaseConnected ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-amber-400 animate-pulse'}`} />
+                    <div>
+                      <span className="text-xs font-bold text-white block">Firebase Authentication & Cloud Sync</span>
+                      <span className="text-[11px] text-slate-400">
+                        {firebaseUser && !firebaseUser.isAnonymous
+                          ? `Authenticated: ${firebaseUser.email || firebaseUser.displayName || 'Player Account'}`
+                          : 'Guest Player Session (Cloud Synced)'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded border ${isFirebaseConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
+                    {isFirebaseConnected ? 'Online' : 'Pending'}
+                  </span>
+                </div>
+
+                {firebaseUserId && (
+                  <div className="pt-2 border-t border-neutral-800/80 text-[10px] text-slate-400 font-mono truncate">
+                    Cloud UID: <span className="text-slate-300 select-all">{firebaseUserId}</span>
+                  </div>
+                )}
+
+                {/* Account Action Buttons */}
+                <div className="pt-2 border-t border-neutral-800/80 flex flex-wrap gap-2">
+                  {!firebaseUser || firebaseUser.isAnonymous ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenAuth?.('login');
+                        }}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold rounded-xl transition-all shadow"
+                      >
+                        <LogIn className="w-3.5 h-3.5" />
+                        <span>Log In / Register</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onSignOut?.();
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-neutral-800 hover:bg-rose-950/60 hover:text-rose-300 border border-neutral-700 text-slate-200 text-xs font-bold rounded-xl transition-all"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  )}
+
+                  {onOpenBackendModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenBackendModal();
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-neutral-900 hover:bg-neutral-800 border border-amber-500/30 text-amber-300 text-xs font-bold rounded-xl transition-all"
+                      title="Open Firebase Console Hub"
+                    >
+                      <Database className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Firebase Hub</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

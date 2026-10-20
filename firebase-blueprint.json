@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with casino balance, VIP tier, and favorites",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "phoneNumber": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "maxLength": 120 },
+        "balance": { "type": "number" },
+        "vipPoints": { "type": "number" },
+        "vipLevel": { "type": "string", "maxLength": 50 },
+        "referralCode": { "type": "string", "maxLength": 50 },
+        "referredBy": { "type": "string", "maxLength": 50 },
+        "favorites": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 100 }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "balance", "vipPoints"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Deposit or withdrawal transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["deposit", "withdraw"] },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["bkash", "nagad", "rocket"] },
+        "accountNumber": { "type": "string", "maxLength": 30 },
+        "trxId": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "type", "amount", "method", "status", "timestamp"]
+    },
+    "SpinRecord": {
+      "title": "SpinRecord",
+      "description": "History record of a casino slot spin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "gameId": { "type": "string", "maxLength": 100 },
+        "gameTitle": { "type": "string", "maxLength": 100 },
+        "betAmount": { "type": "number" },
+        "winAmount": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "gameId", "betAmount", "winAmount", "timestamp"]
+    },
+    "Jackpot": {
+      "title": "Jackpot",
+      "description": "Community live progressive jackpot pool synchronized in Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "grand": { "type": "number" },
+        "major": { "type": "number" },
+        "mini": { "type": "number" },
+        "lastWonBy": { "type": "string", "maxLength": 100 },
+        "lastWonAmount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "grand", "major", "mini", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores individual user player records and balances"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Stores user deposit and withdrawal transactions"
+    },
+    "/spins/{spinId}": {
+      "schema": "SpinRecord",
+      "description": "Stores slot machine spins and game outcomes"
+    },
+    "/jackpots/{jackpotId}": {
+      "schema": "Jackpot",
+      "description": "Stores global real-time progressive jackpot pool"
+    }
+  }
+}
